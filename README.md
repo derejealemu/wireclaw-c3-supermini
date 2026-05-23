@@ -6,7 +6,7 @@
 
 The $2 board. 400KB of SRAM. No PSRAM. No second chance.
 
-WireClaw already supports the big boards. **We made it run on the smallest one.**
+WireClaw already supports the big boards. **We wanted to make it run on the smallest one possible.**
 
 ---
 
