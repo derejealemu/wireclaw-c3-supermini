@@ -114,10 +114,7 @@ pio run -e esp32-c3 -t uploadfs
 
 ## The Code
 
-The full WireClaw fork with all fixes lives at:
-**[github.com/derejealemu/WireClaw](https://github.com/derejealemu/WireClaw)**
-
-This repo contains the supplemental documentation and scripts.
+The full source is right here in this repo.
 
 ---
 
