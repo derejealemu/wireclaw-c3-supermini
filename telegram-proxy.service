@@ -1,0 +1,13 @@
+[Unit]
+Description=Telegram Proxy for ESP32-C3 WireClaw
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/telegram-proxy/telegram-proxy.py --port 9443
+Restart=on-failure
+RestartSec=5
+User=nobody
+
+[Install]
+WantedBy=multi-user.target
