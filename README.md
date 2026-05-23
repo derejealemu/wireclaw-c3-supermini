@@ -1,8 +1,14 @@
-# WireClaw — ESP32-C3 Super Mini
+# WireClaw on ESP32-C3 Super Mini 🦞
 
-**WireClaw** is an AI agent that lives on a microcontroller and controls real hardware. It was designed for ESP32-C6 and ESP32-S3 chips. **This repo is the story of running it on an ESP32-C3 Super Mini** — a $2 board with 400KB of SRAM and no PSRAM.
+**WireClaw** is an AI agent that lives on a microcontroller. It was designed for ESP32-C6, ESP32-S3, and full-size ESP32-C3 dev boards — chips with PSRAM.
 
-It worked. Barely. But it works.
+**This repo is the story of running it on an ESP32-C3 Super Mini.**
+
+The $2 board. 400KB of SRAM. No PSRAM. No second chance.
+
+WireClaw already supports the big boards. **We made it run on the smallest one.**
+
+---
 
 ---
 
@@ -184,4 +190,4 @@ MIT — same as WireClaw. See [LICENSE](LICENSE).
 
 ---
 
-*A project that started as "let's see if this even works" and became a documented set of optimizations for running AI agents on genuinely constrained hardware.*
+*WireClaw already runs on the big boards. Now it runs on the smallest one too.*
