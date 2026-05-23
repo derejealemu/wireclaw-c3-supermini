@@ -1,4 +1,4 @@
-# WireClaw on ESP32-C3 Super Mini 🦞
+# WireClaw on ESP32-C3 Super Mini 
 
 **WireClaw** is an AI agent that lives on a microcontroller. It was designed for ESP32-C6, ESP32-S3, and full-size ESP32-C3 dev boards — chips with PSRAM.
 
