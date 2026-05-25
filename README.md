@@ -177,6 +177,10 @@ pio run -e esp32-c3 -t uploadfs --upload-port /dev/tty.usbmodem11401
 
 ---
 
+## Built On
+
+This project is a fork of **[M64GitHub/WireClaw](https://github.com/M64GitHub/WireClaw)** — the original AI agent that lives on a $5 microcontroller. The core architecture, rule engine, and device HAL are from the upstream project. Our contributions focus on ESP32-C3 Super Mini memory optimizations and the Telegram proxy pattern.
+
 ## License
 
 MIT — same as WireClaw. See [LICENSE](LICENSE).
