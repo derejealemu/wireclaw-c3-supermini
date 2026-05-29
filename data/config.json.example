@@ -10,5 +10,7 @@
   "telegram_token": "",
   "telegram_chat_id": "",
   "telegram_cooldown": "15",
-  "timezone": "UTC0"
+  "timezone": "CET-1CEST-2,M3.5.0/2,M10.5.0/3",
+  "lilfabian_ip": "192.168.0.xxx",
+  "lilfabian_port": "80"
 }

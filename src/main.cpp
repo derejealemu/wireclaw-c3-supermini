@@ -48,6 +48,8 @@ char cfg_telegram_chat_id[16];
 char cfg_system_prompt[4096];
 char cfg_timezone[64];
 int cfg_telegram_cooldown = 3;  /* seconds, 0 = disabled */
+char cfg_lilfabian_ip[16];
+int cfg_lilfabian_port = 80;
 
 /* Placeholder defaults - overridden by LittleFS config.json */
 static void configDefaults() {
@@ -62,6 +64,8 @@ static void configDefaults() {
     cfg_telegram_token[0] = '\0';
     cfg_telegram_chat_id[0] = '\0';
     strncpy(cfg_timezone, "UTC0", sizeof(cfg_timezone));
+    cfg_lilfabian_ip[0] = '\0';
+    cfg_lilfabian_port = 80;
     strncpy(cfg_system_prompt,
         "You are WireClaw, a helpful AI assistant running on an ESP32 microcontroller. "
         "Be concise. Keep responses under 200 words unless asked for detail.",
@@ -180,6 +184,11 @@ static bool loadConfig() {
             cfg_telegram_cooldown = atoi(cd_buf);
         }
         jsonGetString(json_buf, "timezone", cfg_timezone, sizeof(cfg_timezone));
+        jsonGetString(json_buf, "lilfabian_ip", cfg_lilfabian_ip, sizeof(cfg_lilfabian_ip));
+        char lp_buf[8];
+        if (jsonGetString(json_buf, "lilfabian_port", lp_buf, sizeof(lp_buf))) {
+            cfg_lilfabian_port = atoi(lp_buf);
+        }
     } else {
         Serial.printf("LittleFS: no config.json, using defaults\n");
     }

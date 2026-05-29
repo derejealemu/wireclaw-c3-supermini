@@ -33,6 +33,10 @@ extern temperature_sensor_handle_t g_temp_sensor;
 extern void natsSubscribeDeviceSensors();
 extern void natsUnsubscribeDevice(const char *name);
 
+/* Lil'Fabian spider robot config (from main.cpp) */
+extern char cfg_lilfabian_ip[16];
+extern int cfg_lilfabian_port;
+
 /*============================================================================
  * Simple JSON argument parser (for tool arguments)
  *============================================================================*/
@@ -109,6 +113,7 @@ static const char *TOOLS_JSON = R"JSON([
 {"type":"function","function":{"name":"rule_enable","description":"Enable/disable rule","parameters":{"type":"object","properties":{"rule_id":{"type":"string"},"enabled":{"type":"boolean"}},"required":["rule_id","enabled"]}}},
 {"type":"function","function":{"name":"serial_send","description":"Send text over serial_text UART","parameters":{"type":"object","properties":{"text":{"type":"string","description":"Text to send (newline appended)"}},"required":["text"]}}},
 {"type":"function","function":{"name":"remote_chat","description":"Chat with another WireClaw device via NATS","parameters":{"type":"object","properties":{"device":{"type":"string"},"message":{"type":"string"}},"required":["device","message"]}}},
+{"type":"function","function":{"name":"fabian_gait","description":"Command Lil'Fabian spider robot to play a gait/animation. Sends HTTP POST to the spider's web server (configured via lilfabian_ip). Use STOP to halt, STAND for neutral pose. For leg-specific modes (FOOT_TAP, SHOULDER_SWEEP), include leg (0-3). Duration optional: auto-sends STOP after N seconds.","parameters":{"type":"object","properties":{"mode":{"type":"string","enum":["STOP","STAND","CROUCH","WAVE","BREATH","SHIVER","PUSHUP","DIAG_SWAY","FOOT_TAP","SHOULDER_SWEEP","CREEP","YAW","WALK","ROUND","DEMO"]},"leg":{"type":"integer","description":"Leg index 0-3 (A-D) for FOOT_TAP/SHOULDER_SWEEP"},"duration":{"type":"integer","description":"Seconds to play before auto-stopping (optional)"},"speed":{"type":"integer","description":"Frame speed 60-800ms (optional)"}},"required":["mode"]}},
 {"type":"function","function":{"name":"chain_create","description":"Create multi-step automation chain (up to 5 steps) in one call. Steps execute in order with delays.","parameters":{"type":"object","properties":{"sensor_name":{"type":"string","description":"Sensor to monitor"},"condition":{"type":"string","description":"gt|lt|eq|neq|change|always"},"threshold":{"type":"integer"},"interval_seconds":{"type":"integer"},"step1_action":{"type":"string","description":"telegram|led_set|gpio_write|nats_publish|actuator|serial_send"},"step1_message":{"type":"string","description":"For telegram/nats/serial_send"},"step1_r":{"type":"integer"},"step1_g":{"type":"integer"},"step1_b":{"type":"integer"},"step1_pin":{"type":"integer"},"step1_value":{"type":"integer"},"step1_actuator":{"type":"string"},"step1_nats_subject":{"type":"string"},"step2_action":{"type":"string","description":"Action after step1"},"step2_delay":{"type":"integer","description":"Seconds before step2"},"step2_message":{"type":"string"},"step2_r":{"type":"integer"},"step2_g":{"type":"integer"},"step2_b":{"type":"integer"},"step2_pin":{"type":"integer"},"step2_value":{"type":"integer"},"step2_actuator":{"type":"string"},"step2_nats_subject":{"type":"string"},"step3_action":{"type":"string","description":"Step3 (optional)"},"step3_delay":{"type":"integer","description":"Seconds before step3"},"step3_message":{"type":"string"},"step3_r":{"type":"integer"},"step3_g":{"type":"integer"},"step3_b":{"type":"integer"},"step3_pin":{"type":"integer"},"step3_value":{"type":"integer"},"step3_actuator":{"type":"string"},"step3_nats_subject":{"type":"string"},"step4_action":{"type":"string","description":"Step4 (optional)"},"step4_delay":{"type":"integer","description":"Seconds before step4"},"step4_message":{"type":"string"},"step4_r":{"type":"integer"},"step4_g":{"type":"integer"},"step4_b":{"type":"integer"},"step4_pin":{"type":"integer"},"step4_value":{"type":"integer"},"step4_actuator":{"type":"string"},"step4_nats_subject":{"type":"string"},"step5_action":{"type":"string","description":"Step5 (optional)"},"step5_delay":{"type":"integer","description":"Seconds before step5"},"step5_message":{"type":"string"},"step5_r":{"type":"integer"},"step5_g":{"type":"integer"},"step5_b":{"type":"integer"},"step5_pin":{"type":"integer"},"step5_value":{"type":"integer"},"step5_actuator":{"type":"string"},"step5_nats_subject":{"type":"string"}},"required":["sensor_name","condition","threshold","step1_action","step2_action"]}}}
 ])JSON";
 
@@ -1117,6 +1122,145 @@ static void tool_chain_create(const char *args, char *result, int result_len) {
 }
 
 /*============================================================================
+ * Lil'Fabian Spider Robot Tool
+ *============================================================================*/
+
+/* Mode string to mode index mapping */
+static int fabianModeToIdx(const char *mode) {
+    struct { const char *name; int idx; } map[] = {
+        {"STOP", 0}, {"STAND", 1}, {"CROUCH", 2}, {"WAVE", 3},
+        {"BREATH", 4}, {"SHIVER", 5}, {"PUSHUP", 6}, {"DIAG_SWAY", 7},
+        {"FOOT_TAP", 8}, {"SHOULDER_SWEEP", 9}, {"CREEP", 10},
+        {"YAW", 11}, {"WALK", 12}, {"ROUND", 13},
+        {"DEMO", 23},
+    };
+    for (size_t i = 0; i < sizeof(map)/sizeof(map[0]); i++) {
+        if (strcasecmp(mode, map[i].name) == 0) return map[i].idx;
+    }
+    return -1;  /* STOP as fallback */
+}
+
+/* Mode name to URL path mapping (as expected by Lil'Fabian's /api/mode handler) */
+static const char *fabianModeUrl(const char *mode) {
+    struct { const char *name; const char *url; } map[] = {
+        {"STOP", "stop"}, {"STAND", "stand"}, {"CROUCH", "crouch"},
+        {"WAVE", "wave"}, {"BREATH", "breath"}, {"SHIVER", "shiver"},
+        {"PUSHUP", "pushup"}, {"DIAG_SWAY", "diagsway"}, {"FOOT_TAP", "foottap"},
+        {"SHOULDER_SWEEP", "shouldersweep"}, {"CREEP", "creep"},
+        {"YAW", "yaw"}, {"WALK", "walk"}, {"ROUND", "round"},
+        {"DEMO", "demo"},
+    };
+    for (size_t i = 0; i < sizeof(map)/sizeof(map[0]); i++) {
+        if (strcasecmp(mode, map[i].name) == 0) return map[i].url;
+    }
+    return "stop";
+}
+
+static void tool_fabian_gait(const char *args, char *result, int result_len) {
+    if (cfg_lilfabian_ip[0] == '\0') {
+        snprintf(result, result_len, "Error: lilfabian_ip not configured");
+        return;
+    }
+
+    char mode_buf[24];
+    if (!jsonArgString(args, "mode", mode_buf, sizeof(mode_buf))) {
+        snprintf(result, result_len, "Error: 'mode' is required");
+        return;
+    }
+
+    int leg = jsonArgInt(args, "leg", 0);
+    int duration = jsonArgInt(args, "duration", 0);
+    int speed = jsonArgInt(args, "speed", 0);
+
+    leg = constrain(leg, 0, 3);
+
+    const char *mode_url = fabianModeUrl(mode_buf);
+    int port = (cfg_lilfabian_port > 0) ? cfg_lilfabian_port : 80;
+
+    /* Build HTTP request */
+    char request[256];
+    int n;
+    if (speed > 0) {
+        n = snprintf(request, sizeof(request),
+            "GET /api/mode?m=%s&leg=%d&speed=%d HTTP/1.1\r\n"
+            "Host: %s:%d\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            mode_url, leg, speed, cfg_lilfabian_ip, port);
+    } else {
+        n = snprintf(request, sizeof(request),
+            "GET /api/mode?m=%s&leg=%d HTTP/1.1\r\n"
+            "Host: %s:%d\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            mode_url, leg, cfg_lilfabian_ip, port);
+    }
+
+    if (n >= (int)sizeof(request)) {
+        snprintf(result, result_len, "Error: request too long");
+        return;
+    }
+
+    WiFiClient client;
+    if (!client.connect(cfg_lilfabian_ip, port, 3000)) {
+        snprintf(result, result_len, "Error: cannot connect to Lil'Fabian at %s:%d",
+                 cfg_lilfabian_ip, port);
+        return;
+    }
+
+    client.write((const uint8_t *)request, strlen(request));
+
+    /* Read response headers (skip to body) */
+    unsigned long timeout = millis() + 2000;
+    bool got_body = false;
+    while (millis() < timeout && client.connected()) {
+        if (!client.available()) { delay(1); continue; }
+        String line = client.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0) { got_body = true; break; }
+    }
+
+    /* Read response body */
+    char body[64] = {0};
+    if (got_body) {
+        int w = 0;
+        timeout = millis() + 1000;
+        while (millis() < timeout && client.available() && w < (int)sizeof(body) - 1) {
+            int c = client.read();
+            if (c < 0) break;
+            body[w++] = (char)c;
+        }
+        body[w] = '\0';
+    }
+
+    client.stop();
+
+    /* Handle duration: send STOP after delay */
+    if (duration > 0 && strcasecmp(mode_buf, "STOP") != 0) {
+        unsigned long wait_until = millis() + (unsigned long)duration * 1000;
+        while (millis() < wait_until) {
+            delay(10);
+            /* Yield to WiFi/telegram when possible */
+            if ((millis() % 100) == 0) delay(0);
+        }
+        /* Send STOP */
+        if (client.connect(cfg_lilfabian_ip, port, 3000)) {
+            snprintf(request, sizeof(request),
+                "GET /api/mode?m=stop HTTP/1.1\r\n"
+                "Host: %s:%d\r\n"
+                "Connection: close\r\n"
+                "\r\n",
+                cfg_lilfabian_ip, port);
+            client.write((const uint8_t *)request, strlen(request));
+            client.stop();
+        }
+        snprintf(result, result_len, "Lil'Fabian: %s (leg=%d, %ds) DONE", mode_buf, leg, duration);
+    } else {
+        snprintf(result, result_len, "Lil'Fabian: %s (leg=%d) OK", mode_buf, leg);
+    }
+}
+
+/*============================================================================
  * Public API
  *============================================================================*/
 
@@ -1168,6 +1312,9 @@ bool toolExecute(const char *name, const char *args_json,
         tool_remote_chat(args_json, result, result_len);
     } else if (strcmp(name, "chain_create") == 0) {
         tool_chain_create(args_json, result, result_len);
+    /* Lil'Fabian spider robot */
+    } else if (strcmp(name, "fabian_gait") == 0) {
+        tool_fabian_gait(args_json, result, result_len);
     } else {
         snprintf(result, result_len, "Error: unknown tool '%s'", name);
         return false;
